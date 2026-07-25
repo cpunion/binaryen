@@ -2336,7 +2336,7 @@ public:
       trap("null ref");
     }
     auto& field = data->values[curr->index];
-    if (field.geti32() != expected.getSingleValue().geti32()) {
+    if (field != expected.getSingleValue()) {
       return Literal(int32_t{1}); // not equal
     }
     // TODO: Add threads support. For now, report a host limit here, as there

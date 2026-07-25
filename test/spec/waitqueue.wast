@@ -25,7 +25,7 @@
     (func (param $expected i32) (param $timeout i64) (result i32)
       (struct.wait $t 0 (global.get $g) (global.get $wq) (i64.const 0) (local.get $timeout))
     )
-  ) "struct.wait expected must be an i32"
+  ) "struct.wait expected value must have the proper type"
 )
 
 (assert_invalid
@@ -76,17 +76,35 @@
 
 (module
   (type $t (shared (struct (field (mut i32)))))
+  (type $t64 (shared (struct (field (mut i64)))))
+  (type $tref (shared (struct (field (mut (ref null (shared eq)))))))
 
   (global $g (mut (ref null $t)) (struct.new $t (i32.const 0)))
+  (global $g64 (mut (ref null $t64)) (struct.new $t64 (i64.const 0)))
+  (global $gref (mut (ref null $tref)) (struct.new $tref (ref.null (shared eq))))
   (global $wq (mut (ref null (shared waitqueue))) (waitqueue.new))
 
   (func (export "setToNull")
     (global.set $g (ref.null $t))
+    (global.set $g64 (ref.null $t64))
+    (global.set $gref (ref.null $tref))
     (global.set $wq (ref.null (shared waitqueue)))
   )
 
   (func (export "struct.wait") (param $expected i32) (param $timeout i64) (result i32)
     (struct.wait $t 0 (global.get $g) (global.get $wq) (local.get $expected) (local.get $timeout))
+  )
+
+  (func (export "struct.wait_i64") (param $expected i64) (param $timeout i64) (result i32)
+    (struct.wait $t64 0 (global.get $g64) (global.get $wq) (local.get $expected) (local.get $timeout))
+  )
+
+  (func (export "struct.wait_ref") (param $expected (ref null (shared eq))) (param $timeout i64) (result i32)
+    (struct.wait $tref 0 (global.get $gref) (global.get $wq) (local.get $expected) (local.get $timeout))
+  )
+
+  (func (export "struct.wait_ref_i31") (param $expected i32) (param $timeout i64) (result i32)
+    (struct.wait $tref 0 (global.get $gref) (global.get $wq) (ref.i31_shared (local.get $expected)) (local.get $timeout))
   )
 
   (func (export "waitqueue.notify") (param $count i32) (result i32)
@@ -111,12 +129,20 @@
 ;; Control word matched, wait 0ns and return 2.
 (assert_return (invoke "struct.wait" (i32.const 1) (i64.const 0)) (i32.const 2))
 
+(assert_return (invoke "struct.wait_i64" (i64.const 1) (i64.const 100)) (i32.const 1))
+(assert_return (invoke "struct.wait_i64" (i64.const 0) (i64.const 0)) (i32.const 2))
+
+(assert_return (invoke "struct.wait_ref_i31" (i32.const 0) (i64.const 100)) (i32.const 1))
+(assert_return (invoke "struct.wait_ref" (ref.null (shared eq)) (i64.const 0)) (i32.const 2))
+
 ;; Try to wake up 1 thread, but no-one was waiting.
 (assert_return (invoke "waitqueue.notify" (i32.const 1)) (i32.const 0))
 
 (invoke "setToNull")
 
 (assert_trap (invoke "struct.wait" (i32.const 0) (i64.const 0)) "null ref")
+(assert_trap (invoke "struct.wait_i64" (i64.const 0) (i64.const 0)) "null ref")
+(assert_trap (invoke "struct.wait_ref" (ref.null (shared eq)) (i64.const 0)) "null ref")
 (assert_trap (invoke "waitqueue.notify" (i32.const 0)) "null ref")
 
 ;; Binary format test for waitqueue and nowaitqueue.

@@ -6,9 +6,17 @@
   ;; RTRIP:      (type $t (shared (struct (field (mut i32)))))
   (type $t (shared (struct (field (mut i32)))))
 
+  ;; CHECK:      (type $t64 (shared (struct (field (mut i64)))))
+
+  ;; CHECK:      (type $tref (shared (struct (field (mut (ref null (shared eq)))))))
+
   ;; CHECK:      (global $g (ref $t) (struct.new $t
   ;; CHECK-NEXT:  (i32.const 0)
   ;; CHECK-NEXT: ))
+  ;; RTRIP:      (type $t64 (shared (struct (field (mut i64)))))
+
+  ;; RTRIP:      (type $tref (shared (struct (field (mut (ref null (shared eq)))))))
+
   ;; RTRIP:      (global $g (ref $t) (struct.new $t
   ;; RTRIP-NEXT:  (i32.const 0)
   ;; RTRIP-NEXT: ))
@@ -22,6 +30,14 @@
   ;; RTRIP:      (global $nwq (mut (ref null (shared nowaitqueue))) (ref.null (shared nowaitqueue)))
   (global $nwq (mut (ref null (shared nowaitqueue))) (ref.null (shared nowaitqueue)))
 
+  ;; CHECK:      (global $g64 (ref $t64) (struct.new $t64
+  ;; CHECK-NEXT:  (i64.const 0)
+  ;; CHECK-NEXT: ))
+
+  ;; CHECK:      (global $gref (ref $tref) (struct.new $tref
+  ;; CHECK-NEXT:  (ref.null (shared none))
+  ;; CHECK-NEXT: ))
+
   ;; CHECK:      (func $wait (type $0)
   ;; CHECK-NEXT:  (drop
   ;; CHECK-NEXT:   (struct.wait $t 0
@@ -32,6 +48,14 @@
   ;; CHECK-NEXT:   )
   ;; CHECK-NEXT:  )
   ;; CHECK-NEXT: )
+  ;; RTRIP:      (global $g64 (ref $t64) (struct.new $t64
+  ;; RTRIP-NEXT:  (i64.const 0)
+  ;; RTRIP-NEXT: ))
+
+  ;; RTRIP:      (global $gref (ref $tref) (struct.new $tref
+  ;; RTRIP-NEXT:  (ref.null (shared none))
+  ;; RTRIP-NEXT: ))
+
   ;; RTRIP:      (func $wait (type $0)
   ;; RTRIP-NEXT:  (drop
   ;; RTRIP-NEXT:   (struct.wait $t 0
@@ -44,6 +68,58 @@
   ;; RTRIP-NEXT: )
   (func $wait
     (drop (struct.wait $t 0 (global.get $g) (global.get $wq) (i32.const 0) (i64.const 0)))
+  )
+
+  (type $t64 (shared (struct (field (mut i64)))))
+  (global $g64 (ref $t64) (struct.new $t64 (i64.const 0)))
+  ;; CHECK:      (func $wait_i64 (type $0)
+  ;; CHECK-NEXT:  (drop
+  ;; CHECK-NEXT:   (struct.wait $t64 0
+  ;; CHECK-NEXT:    (global.get $g64)
+  ;; CHECK-NEXT:    (global.get $wq)
+  ;; CHECK-NEXT:    (i64.const 0)
+  ;; CHECK-NEXT:    (i64.const 0)
+  ;; CHECK-NEXT:   )
+  ;; CHECK-NEXT:  )
+  ;; CHECK-NEXT: )
+  ;; RTRIP:      (func $wait_i64 (type $0)
+  ;; RTRIP-NEXT:  (drop
+  ;; RTRIP-NEXT:   (struct.wait $t64 0
+  ;; RTRIP-NEXT:    (global.get $g64)
+  ;; RTRIP-NEXT:    (global.get $wq)
+  ;; RTRIP-NEXT:    (i64.const 0)
+  ;; RTRIP-NEXT:    (i64.const 0)
+  ;; RTRIP-NEXT:   )
+  ;; RTRIP-NEXT:  )
+  ;; RTRIP-NEXT: )
+  (func $wait_i64
+    (drop (struct.wait $t64 0 (global.get $g64) (global.get $wq) (i64.const 0) (i64.const 0)))
+  )
+
+  (type $tref (shared (struct (field (mut (ref null (shared eq)))))))
+  (global $gref (ref $tref) (struct.new $tref (ref.null (shared eq))))
+  ;; CHECK:      (func $wait_ref (type $0)
+  ;; CHECK-NEXT:  (drop
+  ;; CHECK-NEXT:   (struct.wait $tref 0
+  ;; CHECK-NEXT:    (global.get $gref)
+  ;; CHECK-NEXT:    (global.get $wq)
+  ;; CHECK-NEXT:    (ref.null (shared none))
+  ;; CHECK-NEXT:    (i64.const 0)
+  ;; CHECK-NEXT:   )
+  ;; CHECK-NEXT:  )
+  ;; CHECK-NEXT: )
+  ;; RTRIP:      (func $wait_ref (type $0)
+  ;; RTRIP-NEXT:  (drop
+  ;; RTRIP-NEXT:   (struct.wait $tref 0
+  ;; RTRIP-NEXT:    (global.get $gref)
+  ;; RTRIP-NEXT:    (global.get $wq)
+  ;; RTRIP-NEXT:    (ref.null (shared none))
+  ;; RTRIP-NEXT:    (i64.const 0)
+  ;; RTRIP-NEXT:   )
+  ;; RTRIP-NEXT:  )
+  ;; RTRIP-NEXT: )
+  (func $wait_ref
+    (drop (struct.wait $tref 0 (global.get $gref) (global.get $wq) (ref.null (shared eq)) (i64.const 0)))
   )
 
   ;; CHECK:      (func $notify (type $0)

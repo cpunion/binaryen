@@ -3652,10 +3652,35 @@ void FunctionValidator::visitStructWait(StructWait* curr) {
                   Type(HeapTypes::sharedWaitqueue, Nullable),
                   curr,
                   "struct.wait waitqueue must be a shared waitqueue reference");
-  shouldBeEqual(curr->expected->type,
-                Type(Type::BasicType::i32),
-                curr,
-                "struct.wait expected must be an i32");
+
+  if (curr->ref->type != Type::unreachable && curr->ref->type.isRef() &&
+      !curr->ref->type.getHeapType().isMaybeShared(HeapType::none) &&
+      curr->ref->type.getHeapType().isStruct()) {
+    auto type = curr->ref->type.getHeapType();
+    const auto& fields = type.getStruct().fields;
+    if (curr->index < fields.size()) {
+      auto& field = fields[curr->index];
+      Type expectedExpectedType;
+      if (field.type == Type::i32) {
+        expectedExpectedType = Type::i32;
+      } else if (field.type == Type::i64) {
+        expectedExpectedType = Type::i64;
+      } else if (field.type.isRef()) {
+        expectedExpectedType =
+          Type(HeapTypes::eq.getBasic(field.type.getHeapType().getShared()),
+               Nullable);
+      } else {
+        shouldBeTrue(
+          false, curr, "struct.wait field type invalid for operation");
+        return;
+      }
+      shouldBeSubType(curr->expected->type,
+                      expectedExpectedType,
+                      curr,
+                      "struct.wait expected value must have the proper type");
+    }
+  }
+
   shouldBeEqual(curr->timeout->type,
                 Type(Type::BasicType::i64),
                 curr,

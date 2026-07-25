@@ -1036,9 +1036,18 @@ template<typename Subtype> struct ChildTyper : OverriddenVisitor<Subtype> {
       ht = curr->ref->type.getHeapType();
     }
 
+    const auto& fields = ht->getStruct().fields;
+    assert(curr->index < fields.size());
+    auto type = fields[curr->index].type;
+    auto expectedType = type;
+    if (expectedType.isRef()) {
+      expectedType =
+        Type(HeapTypes::eq.getBasic(type.getHeapType().getShared()), Nullable);
+    }
+
     note(&curr->ref, Type(*ht, Nullable));
     note(&curr->waitqueue, Type(HeapTypes::sharedWaitqueue, Nullable));
-    note(&curr->expected, Type(Type::BasicType::i32));
+    note(&curr->expected, expectedType);
     note(&curr->timeout, Type(Type::BasicType::i64));
   }
 
