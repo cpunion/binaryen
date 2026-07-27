@@ -103,10 +103,6 @@
     (struct.wait $tref 0 (global.get $gref) (global.get $wq) (local.get $expected) (local.get $timeout))
   )
 
-  (func (export "struct.wait_ref_i31") (param $expected i32) (param $timeout i64) (result i32)
-    (struct.wait $tref 0 (global.get $gref) (global.get $wq) (ref.i31_shared (local.get $expected)) (local.get $timeout))
-  )
-
   (func (export "waitqueue.notify") (param $count i32) (result i32)
     (waitqueue.notify (global.get $wq) (local.get $count))
   )
@@ -132,7 +128,7 @@
 (assert_return (invoke "struct.wait_i64" (i64.const 1) (i64.const 100)) (i32.const 1))
 (assert_return (invoke "struct.wait_i64" (i64.const 0) (i64.const 0)) (i32.const 2))
 
-(assert_return (invoke "struct.wait_ref_i31" (i32.const 0) (i64.const 100)) (i32.const 1))
+(assert_return (invoke "struct.wait_ref" (ref.i31 (i32.const 0)) (i64.const 100)) (i32.const 1))
 (assert_return (invoke "struct.wait_ref" (ref.null (shared eq)) (i64.const 0)) (i32.const 2))
 
 ;; Try to wake up 1 thread, but no-one was waiting.
