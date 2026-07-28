@@ -2355,6 +2355,27 @@ Result<> IRBuilder::makeStructWait(HeapType type, Index index) {
   curr.index = index;
   CHECK_ERR(ChildPopper{*this}.visitStructWait(&curr, type));
   CHECK_ERR(validateTypeAnnotation(type, curr.ref));
+
+  if (curr.expected->type != Type::unreachable) {
+    auto& field = type.getStruct().fields[index];
+    Type expectedExpectedType;
+    if (field.type == Type::i32) {
+      expectedExpectedType = Type::i32;
+    } else if (field.type == Type::i64) {
+      expectedExpectedType = Type::i64;
+    } else if (field.type.isRef()) {
+      expectedExpectedType =
+        Type(HeapTypes::eq.getBasic(field.type.getHeapType().getShared()),
+             Nullable);
+    } else {
+      return Err{
+        "struct.wait field type must be i32, i64 of a subtype of (ref null (shared eq))"};
+    }
+    if (!Type::isSubType(curr.expected->type, expectedExpectedType)) {
+      return Err{"struct.wait expected value must have the proper type"};
+    }
+  }
+
   push(builder.makeStructWait(
     index, curr.ref, curr.waitqueue, curr.expected, curr.timeout));
   return Ok{};
