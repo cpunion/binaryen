@@ -3658,7 +3658,7 @@ void FunctionValidator::visitStructWait(StructWait* curr) {
       curr->ref->type.getHeapType().isStruct()) {
     auto type = curr->ref->type.getHeapType();
     const auto& fields = type.getStruct().fields;
-    if (curr->index < fields.size()) {
+    if (shouldBeTrue(curr->index < fields.size(), curr, "struct.wait field index immediate must be within bounds")) {
       auto& field = fields[curr->index];
       Type expectedExpectedType;
       if (field.type == Type::i32) {
@@ -3671,7 +3671,7 @@ void FunctionValidator::visitStructWait(StructWait* curr) {
                Nullable);
       } else {
         shouldBeTrue(
-          false, curr, "struct.wait field type invalid for operation");
+          false, curr, "struct.wait field type must be i32, i64 of a subtype of (ref null (shared eq))");
         return;
       }
       shouldBeSubType(curr->expected->type,

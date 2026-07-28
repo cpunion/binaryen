@@ -1,8 +1,8 @@
 (assert_invalid
   (module
     (type $t (shared (struct (field i32))))
-    (func (param $expected i32) (param $timeout i64) (result i32)
-      (struct.wait $t 0 (ref.null $t) (ref.null waitqueue) (local.get $expected) (local.get $timeout))
+    (func (result i32)
+      (struct.wait $t 0 (ref.null $t) (ref.null waitqueue) (i32.const 0) (i64.const 0))
     )
   ) "struct.wait waitqueue must be a shared waitqueue reference"
 )
@@ -10,9 +10,8 @@
 (assert_invalid
   (module
     (type $t (shared (struct (field i32))))
-    (global $wq (ref (shared waitqueue)) (waitqueue.new))
-    (func (param $expected i32) (param $timeout i64) (result i32)
-      (struct.wait $t 2 (ref.null $t) (global.get $wq) (local.get $expected) (local.get $timeout))
+    (func (result i32)
+      (struct.wait $t 1 (ref.null $t) (waitqueue.new) (i32.const 0) (i64.const 0))
     )
   ) "struct index out of bounds"
 )
@@ -20,21 +19,27 @@
 (assert_invalid
   (module
     (type $t (shared (struct (field i32))))
-    (global $g (ref $t) (struct.new $t (i32.const 0)))
-    (global $wq (ref (shared waitqueue)) (waitqueue.new))
-    (func (param $expected i32) (param $timeout i64) (result i32)
-      (struct.wait $t 0 (global.get $g) (global.get $wq) (i64.const 0) (local.get $timeout))
+    (func (result i32)
+      (struct.wait $t 0 (ref.null $t) (waitqueue.new) (i64.const 0) (i64.const 0))
     )
   ) "struct.wait expected value must have the proper type"
 )
 
 (assert_invalid
   (module
+    (type $t (shared (struct (field f32))))
+    (func (result i32)
+      (struct.wait $t 0 (ref.null $t) (waitqueue.new) (f32.const 0) (i64.const 0))
+    )
+  )
+  "struct.wait field type must be i32, i64 of a subtype of (ref null (shared eq))"
+)
+
+(assert_invalid
+  (module
     (type $t (shared (struct (field i32))))
-    (global $g (ref $t) (struct.new $t (i32.const 0)))
-    (global $wq (ref (shared waitqueue)) (waitqueue.new))
-    (func (param $expected i32) (param $timeout i64) (result i32)
-      (struct.wait $t 0 (global.get $g) (global.get $wq) (local.get $expected) (i32.const 0))
+    (func (result i32)
+      (struct.wait $t 0 (ref.null $t) (waitqueue.new) (i32.const 0) (i32.const 0))
     )
   ) "struct.wait timeout must be an i64"
 )
@@ -42,7 +47,6 @@
 (assert_invalid
   (module
     (type $t (shared (struct (field i32))))
-    (global $wq (ref (shared waitqueue)) (waitqueue.new))
     (func (param $count i32) (result i32)
       (waitqueue.notify (ref.null waitqueue) (local.get $count))
     )
@@ -51,10 +55,8 @@
 
 (assert_invalid
   (module
-    (type $t (shared (struct (field i32))))
-    (global $wq (ref (shared waitqueue)) (waitqueue.new))
     (func (param $count i32) (result i32)
-      (waitqueue.notify (global.get $wq) (i64.const 0))
+      (waitqueue.notify (waitqueue.new) (i64.const 0))
     )
   ) "waitqueue.notify count must be an i32"
 )
