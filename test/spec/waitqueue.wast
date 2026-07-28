@@ -128,7 +128,7 @@
 (assert_return (invoke "struct.wait_i64" (i64.const 1) (i64.const 100)) (i32.const 1))
 (assert_return (invoke "struct.wait_i64" (i64.const 0) (i64.const 0)) (i32.const 2))
 
-(assert_return (invoke "struct.wait_ref" (ref.i31 (i32.const 0)) (i64.const 100)) (i32.const 1))
+(assert_return (invoke "struct.wait_ref" (ref.i31_shared (i32.const 0)) (i64.const 100)) (i32.const 1))
 (assert_return (invoke "struct.wait_ref" (ref.null (shared eq)) (i64.const 0)) (i32.const 2))
 
 ;; Try to wake up 1 thread, but no-one was waiting.
