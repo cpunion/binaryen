@@ -2357,7 +2357,7 @@ Result<> IRBuilder::makeStructWait(HeapType type, Index index) {
   CHECK_ERR(validateTypeAnnotation(type, curr.ref));
 
   if (curr.expected->type != Type::unreachable) {
-    auto& field = type.getStruct().fields[index];
+    const auto& field = type.getStruct().fields[index];
     Type expectedExpectedType;
     if (field.type == Type::i32) {
       expectedExpectedType = Type::i32;

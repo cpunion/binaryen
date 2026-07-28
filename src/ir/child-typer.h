@@ -1018,7 +1018,6 @@ template<typename Subtype> struct ChildTyper : OverriddenVisitor<Subtype> {
     note(&curr->ref, Type(*ht, Nullable));
     auto type = fields[curr->index].type;
     auto expectedType = type;
-    // TODO: assertion for f32 / f64?
     if (expectedType.isRef()) {
       expectedType =
         Type(HeapTypes::eq.getBasic(type.getHeapType().getShared()), Nullable);
@@ -1041,6 +1040,7 @@ template<typename Subtype> struct ChildTyper : OverriddenVisitor<Subtype> {
     assert(curr->index < fields.size());
     auto type = fields[curr->index].type;
     auto expectedType = type;
+    // TODO: assertion for f32 / f64?
     if (expectedType.isRef()) {
       expectedType =
         Type(HeapTypes::eq.getBasic(type.getHeapType().getShared()), Nullable);
