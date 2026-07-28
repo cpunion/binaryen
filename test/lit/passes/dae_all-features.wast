@@ -537,6 +537,11 @@
 
  ;; CHECK:      (func $0 (type $0)
  ;; CHECK-NEXT:  (local $0 i31ref)
+ ;; CHECK-NEXT:  (local.set $0
+ ;; CHECK-NEXT:   (ref.i31
+ ;; CHECK-NEXT:    (i32.const 0)
+ ;; CHECK-NEXT:   )
+ ;; CHECK-NEXT:  )
  ;; CHECK-NEXT:  (nop)
  ;; CHECK-NEXT: )
  (func $0 (param $x i31ref)

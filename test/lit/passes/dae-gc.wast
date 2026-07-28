@@ -17,15 +17,22 @@
  )
  ;; CHECK:      (func $bar (type $0)
  ;; CHECK-NEXT:  (local $0 i31ref)
- ;; CHECK-NEXT:  (drop
- ;; CHECK-NEXT:   (local.tee $0
- ;; CHECK-NEXT:    (ref.i31
- ;; CHECK-NEXT:     (i32.const 2)
- ;; CHECK-NEXT:    )
+ ;; CHECK-NEXT:  (local.set $0
+ ;; CHECK-NEXT:   (ref.i31
+ ;; CHECK-NEXT:    (i32.const 1)
  ;; CHECK-NEXT:   )
  ;; CHECK-NEXT:  )
- ;; CHECK-NEXT:  (local.set $0
- ;; CHECK-NEXT:   (unreachable)
+ ;; CHECK-NEXT:  (block
+ ;; CHECK-NEXT:   (drop
+ ;; CHECK-NEXT:    (local.tee $0
+ ;; CHECK-NEXT:     (ref.i31
+ ;; CHECK-NEXT:      (i32.const 2)
+ ;; CHECK-NEXT:     )
+ ;; CHECK-NEXT:    )
+ ;; CHECK-NEXT:   )
+ ;; CHECK-NEXT:   (local.set $0
+ ;; CHECK-NEXT:    (unreachable)
+ ;; CHECK-NEXT:   )
  ;; CHECK-NEXT:  )
  ;; CHECK-NEXT: )
  (func $bar (param $0 i31ref)
