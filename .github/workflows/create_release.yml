@@ -86,6 +86,7 @@ jobs:
         SHASUM=$PKGNAME.tar.gz.sha256
         rm -rf binaryen-$VERSION
         mv out/install binaryen-$VERSION
+        bash scripts/llgo-copy-notices.sh binaryen-$VERSION
         tar -czf $TARBALL binaryen-$VERSION
         # on Windows, MSYS2 will strip the carriage return from CMake output
         cmake -E sha256sum $TARBALL > $SHASUM
@@ -184,6 +185,7 @@ jobs:
         SHASUM=$PKGNAME.tar.gz.sha256
         ./alpine.sh find install/ -type f -perm -u=x -exec strip {} +
         mv install binaryen-$VERSION
+        bash scripts/llgo-copy-notices.sh binaryen-$VERSION
         tar -czf $TARBALL binaryen-$VERSION
         cmake -E sha256sum $TARBALL > $SHASUM
         echo "TARBALL=$TARBALL" >> $GITHUB_OUTPUT
@@ -251,6 +253,7 @@ jobs:
         SHASUM=$PKGNAME.tar.gz.sha256
         mkdir binaryen-$VERSION
         cp out/bin/wasm-opt* binaryen-$VERSION/
+        bash scripts/llgo-copy-notices.sh binaryen-$VERSION
         tar -czf $TARBALL binaryen-$VERSION
         cmake -E sha256sum $TARBALL > $SHASUM
         echo "TARBALL=$TARBALL" >> $GITHUB_OUTPUT
