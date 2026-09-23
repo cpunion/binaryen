@@ -61,7 +61,7 @@ jobs:
 
     - name: cmake (win arm64)
       # -G "Visual Studio 15 2017"
-      run: cmake -S . -B out -DCMAKE_INSTALL_PREFIX=out-arm64/install 
+      run: cmake -S . -B out-arm64 -DCMAKE_INSTALL_PREFIX=out-arm64/install
       if: matrix.os == 'windows-11-arm'
 
     - name: build
