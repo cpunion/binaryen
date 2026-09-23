@@ -1,0 +1,23 @@
+name: Sync upstream main
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '17 5 * * *'
+
+permissions:
+  contents: write
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 1
+      - name: Fast-forward main from upstream
+        run: |
+          git remote add upstream https://github.com/WebAssembly/binaryen.git
+          git fetch --depth=1 upstream main
+          git push origin refs/remotes/upstream/main:refs/heads/main

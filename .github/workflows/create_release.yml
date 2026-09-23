@@ -1,18 +1,30 @@
 name: Create Release
 
-# Trigger whenever a tag is created/updated
+# LLGo releases are cut only from the tested llgo branch.
 
 on:
   push:
     tags:
-      - "*"
+      - "llgo-v*"
 
 permissions:
   contents: write
 
 jobs:
+  verify-source:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+    - name: Require tag at llgo branch tip
+      run: |
+        git fetch origin llgo
+        test "$(git rev-parse HEAD)" = "$(git rev-parse origin/llgo)"
+
   build:
     name: build
+    needs: verify-source
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
@@ -100,7 +112,7 @@ jobs:
       if: ${{ matrix.os == 'macos-14' || matrix.os == 'windows-11-arm' }}
 
     - name: upload tarball
-      uses: softprops/action-gh-release@v1
+      uses: softprops/action-gh-release@v2
       with:
         draft: true
         files: |
@@ -114,6 +126,7 @@ jobs:
   # Note: Alpine uses musl libc.
   build-alpine:
     name: alpine
+    needs: verify-source
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
@@ -128,7 +141,7 @@ jobs:
 
     - name: start docker
       run: |
-        if [[ "${{ matrix.docker_platform }}" == "ubuntu-24.04-arm" ]]; then
+        if [[ "${{ matrix.os }}" == "ubuntu-24.04-arm" ]]; then
           platform="--platform=linux/arm64"
         fi
         docker run -w /src -dit $platform --name alpine -v $PWD:/src node:lts-alpine
@@ -177,7 +190,7 @@ jobs:
         echo "SHASUM=$SHASUM" >> $GITHUB_OUTPUT
 
     - name: upload tarball
-      uses: softprops/action-gh-release@v1
+      uses: softprops/action-gh-release@v2
       with:
         draft: true
         files: |
@@ -187,6 +200,7 @@ jobs:
   # Build using Emscripten to JavaScript+WebAssembly.
   build-node:
     name: node
+    needs: verify-source
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -195,7 +209,7 @@ jobs:
     - uses: actions/setup-python@v5
       with:
         python-version: '3.x'
-    - uses: actions/checkout@v1
+    - uses: actions/checkout@v4
       with:
         submodules: true
     - name: install ninja
@@ -243,9 +257,20 @@ jobs:
         echo "SHASUM=$SHASUM" >> $GITHUB_OUTPUT
 
     - name: upload tarball
-      uses: softprops/action-gh-release@v1
+      uses: softprops/action-gh-release@v2
       with:
         draft: true
         files: |
           ${{ steps.archive.outputs.TARBALL }}
           ${{ steps.archive.outputs.SHASUM }}
+
+  publish:
+    name: publish validated release
+    needs: [build, build-alpine, build-node]
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+    - uses: actions/checkout@v4
+    - name: Publish after all archives and tests succeed
+      run: gh release edit "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --draft=false --notes-file LLGO.md
