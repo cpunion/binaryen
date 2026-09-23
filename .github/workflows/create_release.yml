@@ -186,6 +186,9 @@ jobs:
         TARBALL=$PKGNAME.tar.gz
         SHASUM=$PKGNAME.tar.gz.sha256
         ./alpine.sh find install/ -type f -perm -u=x -exec strip {} +
+        # The container installs as root into the bind-mounted workspace.
+        # Give the host runner ownership before it adds LLGo notices and packs.
+        ./alpine.sh chown -R "$(id -u):$(id -g)" install
         mv install binaryen-$VERSION
         bash scripts/llgo-copy-notices.sh binaryen-$VERSION
         tar -czf $TARBALL binaryen-$VERSION
