@@ -66,10 +66,11 @@ jobs:
 
     - name: build
       run: cmake --build out -v --config Release --target install
+      if: matrix.os != 'windows-11-arm'
 
     - name: build-arm64
       run: cmake --build out-arm64 -v --config Release --target install
-      if: startsWith(matrix.os, 'macos')
+      if: startsWith(matrix.os, 'macos') || matrix.os == 'windows-11-arm'
 
     - name: strip
       run: find out*/install/ -type f -perm -u=x -exec strip -x {} +
@@ -105,6 +106,7 @@ jobs:
         SHASUM=$PKGNAME.tar.gz.sha256
         rm -rf binaryen-$VERSION
         mv out-arm64/install binaryen-$VERSION
+        bash scripts/llgo-copy-notices.sh binaryen-$VERSION
         tar -czf $TARBALL binaryen-$VERSION
         # on Windows, MSYS2 will strip the carriage return from CMake output
         cmake -E sha256sum $TARBALL > $SHASUM
