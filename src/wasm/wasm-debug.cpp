@@ -60,9 +60,9 @@ bool hasDWARFSections(const Module& wasm) {
 
 #ifdef BUILD_LLVM_DWARF
 
-// In wasm32 the address size is 32 bits.
-static const size_t AddressSize = 4;
-static constexpr size_t RangeEntrySize = 2 * AddressSize;
+static size_t getAddressSize(const Module& wasm) {
+  return !wasm.memories.empty() && wasm.memories[0]->is64() ? 8 : 4;
+}
 
 // DWARF v6 reserves the all-ones address for a non-existent entity. LLVM also
 // recognizes max-minus-one in legacy range and location data, where all-ones
@@ -73,11 +73,16 @@ static constexpr BinaryLocation LegacyTombstoneAddress = BinaryLocation(-2);
 static constexpr BinaryLocation EmptyRangeAddress = 1;
 static constexpr size_t NoParent = size_t(-1);
 
+static uint64_t allOnesAddress(size_t addressSize) {
+  return addressSize == 8 ? uint64_t(-1) : uint32_t(-1);
+}
+
 struct BinaryenDWARFInfo {
   llvm::StringMap<std::unique_ptr<llvm::MemoryBuffer>> sections;
   std::unique_ptr<llvm::DWARFContext> context;
+  size_t addressSize;
 
-  BinaryenDWARFInfo(const Module& wasm) {
+  BinaryenDWARFInfo(const Module& wasm) : addressSize(getAddressSize(wasm)) {
     // Get debug sections from the wasm.
     for (auto& section : wasm.customSections) {
       if (Name(section.name).startsWith(".debug_") && section.data.data()) {
@@ -87,7 +92,7 @@ struct BinaryenDWARFInfo {
       }
     }
     // Parse debug sections.
-    uint8_t addrSize = AddressSize;
+    uint8_t addrSize = addressSize;
     bool isLittleEndian = true;
     context = llvm::DWARFContext::create(sections, addrSize, isLittleEndian);
     if (context->getMaxVersion() > 4) {
@@ -295,15 +300,15 @@ struct LineState {
   void emitDiff(const LineState& old,
                 std::vector<llvm::DWARFYAML::LineTableOpcode>& newOpcodes,
                 const llvm::DWARFYAML::LineTable& table,
+                size_t addressSize,
                 bool endSequence) const {
     bool useSpecial = false;
     if (addr != old.addr || line != old.line) {
       // Try to use a special opcode TODO
     }
     if (addr != old.addr && !useSpecial) {
-      // len = 1 (subopcode) + 4 (wasm32 address)
-      // FIXME: look at AddrSize on the Unit.
-      auto item = makeItem(llvm::dwarf::DW_LNE_set_address, 5);
+      // The address operand has the compilation unit's address width.
+      auto item = makeItem(llvm::dwarf::DW_LNE_set_address, 1 + addressSize);
       item.Data = addr;
       newOpcodes.push_back(item);
     }
@@ -692,7 +697,8 @@ static bool isTombstone(uint32_t x) { return x == 0 || isNonzeroTombstone(x); }
 // Update debug lines, and update the locationUpdater with debug line offset
 // changes so we can update offsets into the debug line section.
 static void updateDebugLines(llvm::DWARFYAML::Data& data,
-                             LocationUpdater& locationUpdater) {
+                             LocationUpdater& locationUpdater,
+                             size_t addressSize) {
   for (auto& table : data.DebugLines) {
     uint32_t sequenceId = 0;
     // Parse the original opcodes and emit new ones.
@@ -784,7 +790,7 @@ static void updateDebugLines(llvm::DWARFYAML::Data& data,
         bool endSequence =
           i + 1 == newAddrs.size() ||
           newAddrInfo.at(newAddrs[i + 1]).sequenceId != state.sequenceId;
-        state.emitDiff(lastState, newOpcodes, table, endSequence);
+        state.emitDiff(lastState, newOpcodes, table, addressSize, endSequence);
       }
       table.Opcodes.swap(newOpcodes);
     }
@@ -800,7 +806,9 @@ static void updateDebugLines(llvm::DWARFYAML::Data& data,
     auto oldLocation = table.Position;
     locationUpdater.debugLineMap[oldLocation] = newLocation;
     table.Position = newLocation;
-    newLocation += computedLengths[i] + AddressSize;
+    // The initial-length field is four bytes in DWARF32 and twelve in
+    // DWARF64. It is independent of the target address width.
+    newLocation += computedLengths[i] + (table.Length.isDWARF64() ? 12 : 4);
     table.Length.setLength(computedLengths[i]);
   }
 }
@@ -975,26 +983,31 @@ static void updateCompileUnits(const BinaryenDWARFInfo& info,
 }
 
 static void updateRanges(llvm::DWARFYAML::Data& yaml,
-                         const LocationUpdater& locationUpdater) {
+                         const LocationUpdater& locationUpdater,
+                         size_t addressSize) {
   // In each range section, update the start and end. If either endpoint no
   // longer has a mapping, emit an empty range that a debugger can safely
   // ignore. Do not use (0, 0), since that is the list terminator.
   for (auto& range : yaml.Ranges) {
-    BinaryLocation oldStart = range.Start, oldEnd = range.End, newStart = 0,
-                   newEnd = 0;
-    if ((oldStart == 0 && oldEnd == 0) || oldStart == AllOnesAddress) {
+    uint64_t oldStart = range.Start, oldEnd = range.End, newStart = 0,
+             newEnd = 0;
+    if ((oldStart == 0 && oldEnd == 0) ||
+        oldStart == allOnesAddress(addressSize)) {
       newStart = oldStart;
       newEnd = oldEnd;
-    } else if (oldStart == LegacyTombstoneAddress || isTombstone(oldEnd)) {
+    } else if (BinaryLocation(oldStart) == LegacyTombstoneAddress ||
+               isTombstone(BinaryLocation(oldEnd))) {
       newStart = EmptyRangeAddress;
       newEnd = EmptyRangeAddress;
     } else {
       // Zero is a valid offset from the current range-list base. It is only a
       // tombstone when paired with a zero end as handled above.
-      newStart = oldStart == 0 ? 0 : locationUpdater.getNewStart(oldStart);
-      newEnd = locationUpdater.getNewEnd(oldEnd);
-      if ((oldStart != 0 && isTombstone(newStart)) || isTombstone(newEnd) ||
-          newEnd <= newStart) {
+      newStart = oldStart == 0
+                   ? 0
+                   : locationUpdater.getNewStart(BinaryLocation(oldStart));
+      newEnd = locationUpdater.getNewEnd(BinaryLocation(oldEnd));
+      if ((oldStart != 0 && isTombstone(BinaryLocation(newStart))) ||
+          isTombstone(BinaryLocation(newEnd)) || newEnd <= newStart) {
         newStart = EmptyRangeAddress;
         newEnd = EmptyRangeAddress;
       }
@@ -1028,7 +1041,8 @@ struct DIEAddressInfo {
 
 static void readDIEAddressRanges(DIEAddressInfo& info,
                                  llvm::DWARFYAML::Data& yaml,
-                                 BinaryLocation compileUnitBase) {
+                                 BinaryLocation compileUnitBase,
+                                 size_t rangeEntrySize) {
   std::optional<BinaryLocation> lowPC;
   std::optional<BinaryLocation> highPC;
   std::optional<BinaryLocation> rangesOffset;
@@ -1052,14 +1066,14 @@ static void readDIEAddressRanges(DIEAddressInfo& info,
 
   if (rangesOffset) {
     info.hasRangeDescription = true;
-    if (*rangesOffset % RangeEntrySize != 0 ||
-        *rangesOffset / RangeEntrySize >= yaml.Ranges.size()) {
+    if (*rangesOffset % rangeEntrySize != 0 ||
+        *rangesOffset / rangeEntrySize >= yaml.Ranges.size()) {
       info.malformed = true;
       return;
     }
     auto base = uint64_t(compileUnitBase);
     bool terminated = false;
-    for (size_t i = *rangesOffset / RangeEntrySize; i < yaml.Ranges.size();
+    for (size_t i = *rangesOffset / rangeEntrySize; i < yaml.Ranges.size();
          ++i) {
       auto start = BinaryLocation(yaml.Ranges[i].Start);
       auto end = BinaryLocation(yaml.Ranges[i].End);
@@ -1106,12 +1120,16 @@ static void readDIEAddressRanges(DIEAddressInfo& info,
   info.rangeListDirty |= info.rangesValue && info.ranges.normalize();
 }
 
-static void writeRangeList(DIEAddressInfo& info, llvm::DWARFYAML::Data& yaml) {
+static void writeRangeList(DIEAddressInfo& info,
+                           llvm::DWARFYAML::Data& yaml,
+                           size_t rangeEntrySize,
+                           size_t addressSize) {
   assert(info.rangesValue);
-  info.rangesValue->Value = yaml.Ranges.size() * RangeEntrySize;
+  info.rangesValue->Value = yaml.Ranges.size() * rangeEntrySize;
   // Use an explicit zero base so the new entries remain absolute and can be
   // updated again without recovering an implicit compile-unit base.
-  yaml.Ranges.push_back(llvm::DWARFYAML::Range{AllOnesAddress, 0, 0});
+  yaml.Ranges.push_back(
+    llvm::DWARFYAML::Range{allOnesAddress(addressSize), 0, 0});
   for (auto [start, end] : info.ranges.get()) {
     yaml.Ranges.push_back(llvm::DWARFYAML::Range{start, end, 0});
   }
@@ -1137,20 +1155,23 @@ static void markUnavailable(std::vector<DIEAddressInfo>& infos,
 static void
 writeUnavailableDIE(DIEAddressInfo& info,
                     llvm::DWARFYAML::Data& yaml,
-                    std::optional<BinaryLocation>& emptyRangeListOffset) {
+                    std::optional<BinaryLocation>& emptyRangeListOffset,
+                    size_t rangeEntrySize,
+                    size_t addressSize) {
   iterContextAndYAML(
     info.abbrevDecl->attributes(),
     info.yamlEntry->Values,
     [&](const llvm::DWARFAbbreviationDeclaration::AttributeSpec& attrSpec,
         llvm::DWARFYAML::FormValue& yamlValue) {
       if (attrSpec.Attr == llvm::dwarf::DW_AT_low_pc) {
-        yamlValue.Value = AllOnesAddress;
+        yamlValue.Value = allOnesAddress(addressSize);
       } else if (attrSpec.Attr == llvm::dwarf::DW_AT_high_pc) {
-        yamlValue.Value =
-          attrSpec.Form == llvm::dwarf::DW_FORM_data4 ? 0 : AllOnesAddress;
+        yamlValue.Value = attrSpec.Form == llvm::dwarf::DW_FORM_data4
+                            ? 0
+                            : allOnesAddress(addressSize);
       } else if (attrSpec.Attr == llvm::dwarf::DW_AT_ranges) {
         if (!emptyRangeListOffset) {
-          emptyRangeListOffset = yaml.Ranges.size() * RangeEntrySize;
+          emptyRangeListOffset = yaml.Ranges.size() * rangeEntrySize;
           yaml.Ranges.push_back(llvm::DWARFYAML::Range{0, 0, 0});
         }
         yamlValue.Value = *emptyRangeListOffset;
@@ -1161,6 +1182,7 @@ writeUnavailableDIE(DIEAddressInfo& info,
 static void repairDIEAddressRanges(const BinaryenDWARFInfo& dwarfInfo,
                                    llvm::DWARFYAML::Data& yaml,
                                    const LocationUpdater& locationUpdater) {
+  const size_t rangeEntrySize = 2 * dwarfInfo.addressSize;
   size_t compileUnitIndex = 0;
   std::optional<BinaryLocation> emptyRangeListOffset;
   iterContextAndYAML(
@@ -1199,7 +1221,7 @@ static void repairDIEAddressRanges(const BinaryenDWARFInfo& dwarfInfo,
             ancestors[info.depth] = index;
             ancestors.resize(info.depth + 1);
           }
-          readDIEAddressRanges(info, yaml, compileUnitBase);
+          readDIEAddressRanges(info, yaml, compileUnitBase, rangeEntrySize);
         }
         ++yamlEntry;
         ++index;
@@ -1282,9 +1304,13 @@ static void repairDIEAddressRanges(const BinaryenDWARFInfo& dwarfInfo,
 
       for (auto& info : infos) {
         if (info.abbrevDecl && info.unavailable) {
-          writeUnavailableDIE(info, yaml, emptyRangeListOffset);
+          writeUnavailableDIE(info,
+                              yaml,
+                              emptyRangeListOffset,
+                              rangeEntrySize,
+                              dwarfInfo.addressSize);
         } else if (info.abbrevDecl && info.rangeListDirty) {
-          writeRangeList(info, yaml);
+          writeRangeList(info, yaml, rangeEntrySize, dwarfInfo.addressSize);
         }
       }
       ++compileUnitIndex;
@@ -1296,7 +1322,7 @@ static void repairDIEAddressRanges(const BinaryenDWARFInfo& dwarfInfo,
 static const BinaryLocation IGNOREABLE_LOCATION = 1;
 
 static bool isNewBaseLoc(const llvm::DWARFYAML::Loc& loc) {
-  return loc.Start == BinaryLocation(-1);
+  return loc.Start == uint64_t(-1) || loc.Start == uint32_t(-1);
 }
 
 static bool isEndMarkerLoc(const llvm::DWARFYAML::Loc& loc) {
@@ -1325,7 +1351,7 @@ static void updateLoc(llvm::DWARFYAML::Data& yaml,
       atStart = false;
     }
     // By default we copy values over, unless we modify them below.
-    BinaryLocation newStart = loc.Start, newEnd = loc.End;
+    uint64_t newStart = loc.Start, newEnd = loc.End;
     if (isNewBaseLoc(loc)) {
       // This is a new base.
       // Note that the base is not the address of an instruction, necessarily -
@@ -1410,12 +1436,12 @@ void writeDWARFSections(Module& wasm, const BinaryLocations& newLocations) {
 
   LocationUpdater locationUpdater(wasm, newLocations);
 
-  updateDebugLines(data, locationUpdater);
+  updateDebugLines(data, locationUpdater, info.addressSize);
 
   bool is64 = wasm.memories.size() > 0 ? wasm.memories[0]->is64() : false;
   updateCompileUnits(info, data, locationUpdater, is64);
 
-  updateRanges(data, locationUpdater);
+  updateRanges(data, locationUpdater, info.addressSize);
 
   repairDIEAddressRanges(info, data, locationUpdater);
 

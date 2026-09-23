@@ -1,4 +1,5 @@
 import os
+import shutil
 import subprocess
 import tempfile
 
@@ -8,6 +9,31 @@ from . import utils
 
 
 class DWARFTest(utils.BinaryenTestCase):
+    def test_memory64_address_width(self):
+        # Regenerate the checked-in input from dwarf-memory64.c with:
+        # clang -target wasm64-unknown-unknown -O1 -g -gdwarf-4 \
+        #   -fdebug-compilation-dir=/binaryen -c dwarf-memory64.c -o input.o
+        # wasm-ld -mwasm64 --no-entry --export=debug_probe input.o -o memory64.wasm
+        source = self.input_path(os.path.join('dwarf', 'memory64.wasm'))
+        dwarfdump = shutil.which('llvm-dwarfdump')
+        with tempfile.TemporaryDirectory() as temp_dir:
+            for name, args in [('roundtrip', ['--roundtrip']),
+                               ('asyncify', ['--asyncify'])]:
+                output = os.path.join(temp_dir, name + '.wasm')
+                shared.run_process(shared.WASM_OPT +
+                                   [source, '-g', *args, '-o', output])
+                dump = shared.run_process(shared.WASM_OPT +
+                                          [output, '--dwarfdump'],
+                                          capture_output=True).stdout
+                self.assertIn('debug_probe', dump)
+                if dwarfdump:
+                    verify = subprocess.run([dwarfdump, '--verify', output],
+                                            capture_output=True, text=True)
+                    diagnostics = verify.stdout + verify.stderr
+                    self.assertEqual(verify.returncode, 0, diagnostics)
+                    self.assertNotIn('mismatching address size', diagnostics)
+                    self.assertIn('No errors.', diagnostics)
+
     def test_tombstone_roundtrip(self):
         def custom_section(name, contents):
             name = name.encode()

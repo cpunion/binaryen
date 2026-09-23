@@ -90,7 +90,11 @@ void dumpDebugARanges(DWARFContext &DCtx, DWARFYAML::Data &Y) {
 }
 
 void dumpDebugRanges(DWARFContext &DCtx, DWARFYAML::Data &Y) { // XXX BINARYEN
-  uint8_t savedAddressByteSize = 4;
+  auto CUS = DCtx.normal_units();
+  if (CUS.empty()) {
+    return;
+  }
+  uint8_t savedAddressByteSize = CUS.begin()->get()->getAddressByteSize();
   DWARFDataExtractor rangesData(DCtx.getDWARFObj(), DCtx.getDWARFObj().getRangesSection(),
                                 DCtx.isLittleEndian(), savedAddressByteSize);
   uint64_t offset = 0;

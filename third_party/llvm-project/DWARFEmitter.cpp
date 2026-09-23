@@ -124,9 +124,10 @@ void DWARFYAML::EmitDebugRanges(raw_ostream &OS, const DWARFYAML::Data &DI) {
   // format is totally trivial, consisting just of pairs of address
   // sized addresses describing the ranges." and apparently it ends
   // with a null termination of a pair of zeros
+  const auto AddrSize = DI.CompileUnits.empty() ? 4 : DI.CompileUnits[0].AddrSize;
   for (auto Range : DI.Ranges) {
-    writeInteger((uint32_t)Range.Start, OS, DI.IsLittleEndian);
-    writeInteger((uint32_t)Range.End, OS, DI.IsLittleEndian);
+    writeVariableSizedInteger(Range.Start, AddrSize, OS, DI.IsLittleEndian);
+    writeVariableSizedInteger(Range.End, AddrSize, OS, DI.IsLittleEndian);
   }
 }
 
@@ -134,14 +135,14 @@ void DWARFYAML::EmitDebugRanges(raw_ostream &OS, const DWARFYAML::Data &DI) {
 void DWARFYAML::EmitDebugLoc(raw_ostream &OS, const DWARFYAML::Data &DI) {
   for (auto Loc : DI.Locs) {
     auto AddrSize = DI.CompileUnits[0].AddrSize;  // XXX BINARYEN
-    // FIXME: Loc.Start etc should probably not be 32-bit.
-    writeVariableSizedInteger((uint64_t)(int32_t)Loc.Start, AddrSize, OS, DI.IsLittleEndian);
-    writeVariableSizedInteger((uint64_t)(int32_t)Loc.End, AddrSize, OS, DI.IsLittleEndian);
+    writeVariableSizedInteger(Loc.Start, AddrSize, OS, DI.IsLittleEndian);
+    writeVariableSizedInteger(Loc.End, AddrSize, OS, DI.IsLittleEndian);
     if (Loc.Start == 0 && Loc.End == 0) {
       // End of a list.
       continue;
     }
-    if (Loc.Start != -1) {
+    const uint64_t baseMarker = AddrSize == 8 ? uint64_t(-1) : uint32_t(-1);
+    if (Loc.Start != baseMarker) {
       writeInteger((uint16_t)Loc.Location.size(), OS, DI.IsLittleEndian);
       for (auto x : Loc.Location) {
         writeInteger((uint8_t)x, OS, DI.IsLittleEndian);
