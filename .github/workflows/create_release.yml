@@ -1,14 +1,20 @@
 name: Create Release
 
-# LLGo releases are cut only from the tested llgo branch.
+# Validate release packages on PRs; publish tags only from the tested llgo branch.
 
 on:
+  pull_request:
+    branches:
+      - llgo
   push:
     tags:
       - "llgo-v*"
 
 permissions:
   contents: write
+
+env:
+  LLGO_PACKAGE_VERSION: ${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || github.ref_name }}
 
 jobs:
   verify-source:
@@ -18,6 +24,7 @@ jobs:
       with:
         fetch-depth: 0
     - name: Require tag at llgo branch tip
+      if: github.event_name == 'push'
       run: |
         git fetch origin llgo
         test "$(git rev-parse HEAD)" = "$(git rev-parse origin/llgo)"
@@ -81,7 +88,7 @@ jobs:
       run: |
         # Ignore all but the first component of the os name
         OSNAME=$(echo ${{ matrix.os }} | sed 's/-.*//')
-        VERSION=$GITHUB_REF_NAME
+        VERSION=$LLGO_PACKAGE_VERSION
         PKGNAME="binaryen-$VERSION-x86_64-$OSNAME"
         TARBALL=$PKGNAME.tar.gz
         SHASUM=$PKGNAME.tar.gz.sha256
@@ -100,7 +107,7 @@ jobs:
       run: |
         # Ignore all but the first component of the os name
         OSNAME=$(echo ${{ matrix.os }} | sed 's/-.*//')
-        VERSION=$GITHUB_REF_NAME
+        VERSION=$LLGO_PACKAGE_VERSION
         PKGNAME="binaryen-$VERSION-arm64-$OSNAME"
         TARBALL=$PKGNAME.tar.gz
         SHASUM=$PKGNAME.tar.gz.sha256
@@ -115,6 +122,7 @@ jobs:
       if: ${{ matrix.os == 'macos-14' || matrix.os == 'windows-11-arm' }}
 
     - name: upload tarball
+      if: github.event_name == 'push'
       uses: softprops/action-gh-release@v2
       with:
         draft: true
@@ -180,7 +188,7 @@ jobs:
     - name: archive
       id: archive
       run: |
-        VERSION=$GITHUB_REF_NAME
+        VERSION=$LLGO_PACKAGE_VERSION
         ARCH=$(./alpine.sh uname -m)
         PKGNAME="binaryen-$VERSION-$ARCH-linux"
         TARBALL=$PKGNAME.tar.gz
@@ -197,6 +205,7 @@ jobs:
         echo "SHASUM=$SHASUM" >> $GITHUB_OUTPUT
 
     - name: upload tarball
+      if: github.event_name == 'push'
       uses: softprops/action-gh-release@v2
       with:
         draft: true
@@ -252,7 +261,7 @@ jobs:
     - name: archive
       id: archive
       run: |
-        VERSION=$GITHUB_REF_NAME
+        VERSION=$LLGO_PACKAGE_VERSION
         PKGNAME="binaryen-$VERSION-node"
         TARBALL=$PKGNAME.tar.gz
         SHASUM=$PKGNAME.tar.gz.sha256
@@ -265,6 +274,7 @@ jobs:
         echo "SHASUM=$SHASUM" >> $GITHUB_OUTPUT
 
     - name: upload tarball
+      if: github.event_name == 'push'
       uses: softprops/action-gh-release@v2
       with:
         draft: true
@@ -274,6 +284,7 @@ jobs:
 
   publish:
     name: publish validated release
+    if: github.event_name == 'push'
     needs: [build, build-alpine, build-node]
     runs-on: ubuntu-latest
     env:
