@@ -89,8 +89,8 @@ struct Range {
 };
 
 struct Loc {
-  uint32_t Start;
-  uint32_t End;
+  uint64_t Start;
+  uint64_t End;
   std::vector<uint8_t> Location;
   uint64_t CompileUnitOffset;
 };

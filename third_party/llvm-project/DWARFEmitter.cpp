@@ -124,24 +124,25 @@ void DWARFYAML::EmitDebugRanges(raw_ostream &OS, const DWARFYAML::Data &DI) {
   // format is totally trivial, consisting just of pairs of address
   // sized addresses describing the ranges." and apparently it ends
   // with a null termination of a pair of zeros
+  const auto AddrSize = DI.CompileUnits.empty() ? 4 : DI.CompileUnits[0].AddrSize;
   for (auto Range : DI.Ranges) {
-    writeInteger((uint32_t)Range.Start, OS, DI.IsLittleEndian);
-    writeInteger((uint32_t)Range.End, OS, DI.IsLittleEndian);
+    writeVariableSizedInteger(Range.Start, AddrSize, OS, DI.IsLittleEndian);
+    writeVariableSizedInteger(Range.End, AddrSize, OS, DI.IsLittleEndian);
   }
 }
 
 // XXX BINARYEN
 void DWARFYAML::EmitDebugLoc(raw_ostream &OS, const DWARFYAML::Data &DI) {
+  const auto AddrSize = DI.CompileUnits.empty() ? 4 : DI.CompileUnits[0].AddrSize;
   for (auto Loc : DI.Locs) {
-    auto AddrSize = DI.CompileUnits[0].AddrSize;  // XXX BINARYEN
-    // FIXME: Loc.Start etc should probably not be 32-bit.
-    writeVariableSizedInteger((uint64_t)(int32_t)Loc.Start, AddrSize, OS, DI.IsLittleEndian);
-    writeVariableSizedInteger((uint64_t)(int32_t)Loc.End, AddrSize, OS, DI.IsLittleEndian);
+    writeVariableSizedInteger(Loc.Start, AddrSize, OS, DI.IsLittleEndian);
+    writeVariableSizedInteger(Loc.End, AddrSize, OS, DI.IsLittleEndian);
     if (Loc.Start == 0 && Loc.End == 0) {
       // End of a list.
       continue;
     }
-    if (Loc.Start != -1) {
+    const uint64_t baseMarker = AddrSize == 8 ? uint64_t(-1) : uint32_t(-1);
+    if (Loc.Start != baseMarker) {
       writeInteger((uint16_t)Loc.Location.size(), OS, DI.IsLittleEndian);
       for (auto x : Loc.Location) {
         writeInteger((uint8_t)x, OS, DI.IsLittleEndian);
@@ -306,9 +307,11 @@ static void EmitDebugLineInternal(raw_ostream &RealOS,
         writeInteger((uint8_t)Op.SubOpcode, OS, DI.IsLittleEndian);
         switch (Op.SubOpcode) {
         case dwarf::DW_LNE_set_address:
-        case dwarf::DW_LNE_set_discriminator:
           writeVariableSizedInteger(Op.Data, DI.CompileUnits[0].AddrSize, OS,
                                     DI.IsLittleEndian);
+          break;
+        case dwarf::DW_LNE_set_discriminator:
+          encodeULEB128(Op.Data, OS);
           break;
         case dwarf::DW_LNE_define_file:
           EmitFileEntry(OS, Op.FileEntry);
@@ -352,15 +355,19 @@ static void EmitDebugLineInternal(raw_ostream &RealOS,
       }
     }
     // XXX BINARYEN Write to the actual stream, with the proper size.
-    // We assume for now that the length fits in 32 bits.
     size_t Size = OS.str().size();
-    if (Size >= UINT32_MAX) {
+    if (!LineTable.Length.isDWARF64() && Size >= UINT32_MAX) {
       llvm_unreachable("Table is too big");
     }
     if (computedLengths) {
       computedLengths->push_back(Size);
     }
-    writeInteger((uint32_t)Size, RealOS, DI.IsLittleEndian);
+    if (LineTable.Length.isDWARF64()) {
+      writeInteger(UINT32_MAX, RealOS, DI.IsLittleEndian);
+      writeInteger((uint64_t)Size, RealOS, DI.IsLittleEndian);
+    } else {
+      writeInteger((uint32_t)Size, RealOS, DI.IsLittleEndian);
+    }
     RealOS << OS.str();
   }
 }
