@@ -133,8 +133,8 @@ void DWARFYAML::EmitDebugRanges(raw_ostream &OS, const DWARFYAML::Data &DI) {
 
 // XXX BINARYEN
 void DWARFYAML::EmitDebugLoc(raw_ostream &OS, const DWARFYAML::Data &DI) {
+  const auto AddrSize = DI.CompileUnits.empty() ? 4 : DI.CompileUnits[0].AddrSize;
   for (auto Loc : DI.Locs) {
-    auto AddrSize = DI.CompileUnits[0].AddrSize;  // XXX BINARYEN
     writeVariableSizedInteger(Loc.Start, AddrSize, OS, DI.IsLittleEndian);
     writeVariableSizedInteger(Loc.End, AddrSize, OS, DI.IsLittleEndian);
     if (Loc.Start == 0 && Loc.End == 0) {
@@ -307,9 +307,11 @@ static void EmitDebugLineInternal(raw_ostream &RealOS,
         writeInteger((uint8_t)Op.SubOpcode, OS, DI.IsLittleEndian);
         switch (Op.SubOpcode) {
         case dwarf::DW_LNE_set_address:
-        case dwarf::DW_LNE_set_discriminator:
           writeVariableSizedInteger(Op.Data, DI.CompileUnits[0].AddrSize, OS,
                                     DI.IsLittleEndian);
+          break;
+        case dwarf::DW_LNE_set_discriminator:
+          encodeULEB128(Op.Data, OS);
           break;
         case dwarf::DW_LNE_define_file:
           EmitFileEntry(OS, Op.FileEntry);
@@ -353,15 +355,19 @@ static void EmitDebugLineInternal(raw_ostream &RealOS,
       }
     }
     // XXX BINARYEN Write to the actual stream, with the proper size.
-    // We assume for now that the length fits in 32 bits.
     size_t Size = OS.str().size();
-    if (Size >= UINT32_MAX) {
+    if (!LineTable.Length.isDWARF64() && Size >= UINT32_MAX) {
       llvm_unreachable("Table is too big");
     }
     if (computedLengths) {
       computedLengths->push_back(Size);
     }
-    writeInteger((uint32_t)Size, RealOS, DI.IsLittleEndian);
+    if (LineTable.Length.isDWARF64()) {
+      writeInteger(UINT32_MAX, RealOS, DI.IsLittleEndian);
+      writeInteger((uint64_t)Size, RealOS, DI.IsLittleEndian);
+    } else {
+      writeInteger((uint32_t)Size, RealOS, DI.IsLittleEndian);
+    }
     RealOS << OS.str();
   }
 }
